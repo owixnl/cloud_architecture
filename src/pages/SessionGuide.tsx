@@ -13,9 +13,10 @@ import {
   StatusIndicator,
   Icon,
 } from '@cloudscape-design/components';
-import { curriculum, sessionTypeConfig } from '@/data/curriculum';
+import { curriculum, sessionTypeConfig, Session } from '@/data/curriculum';
+import { findPrivateItem } from '@/utils/privateMenu';
 import { MarkdownRenderer } from '@/components/markdown/MarkdownRenderer';
-import { loadMarkdownFile } from '@/utils/markdownLoader';
+import { loadMarkdownFile, parseMarkdownText } from '@/utils/markdownLoader';
 import '@/styles/badges.css';
 import '@/styles/download-files.css';
 import '@/styles/session-guide.css';
@@ -162,12 +163,23 @@ const renderInlineCode = (text: string): React.ReactNode[] => {
   return parts;
 };
 
-export const SessionGuide: React.FC = () => {
-  const { weekNumber, sessionNumber } = useParams<{
+interface SessionGuideProps {
+  /** /ICT 처럼 URL 파라미터 없이 특정 차시를 보여줄 때 사용 */
+  fixedWeek?: number;
+  fixedSession?: number;
+  /** 이 브라우저에만 저장된 개인 본문 id (/private/:id) */
+  privateId?: string;
+}
+
+export const SessionGuide: React.FC<SessionGuideProps> = ({ fixedWeek, fixedSession, privateId }) => {
+  const params = useParams<{
     weekNumber: string;
     sessionNumber: string;
   }>();
+  const weekNumber = fixedWeek !== undefined ? String(fixedWeek) : params.weekNumber;
+  const sessionNumber = fixedSession !== undefined ? String(fixedSession) : params.sessionNumber;
   const [markdownContent, setMarkdownContent] = useState<string>('');
+  const [colabContent, setColabContent] = useState<string>('');
   const [cleanupContent, setCleanupContent] = useState<string>('');
   const [referenceContent, setReferenceContent] = useState<string>('');
   const [additionalResourcesContent, setAdditionalResourcesContent] =
@@ -183,8 +195,27 @@ export const SessionGuide: React.FC = () => {
   const session = parseInt(sessionNumber || '0');
 
   // 커리큘럼 데이터에서 해당 주차와 차시 찾기
-  const weekData = curriculum.find((w) => w.week === week);
-  const sessionData = weekData?.sessions.find((s) => s.session === session);
+  const privateItem = privateId ? findPrivateItem(privateId) : undefined;
+  const privateMeta = (() => {
+    try {
+      return privateItem?.markdown ? parseMarkdownText(privateItem.markdown).metadata : undefined;
+    } catch {
+      return undefined;
+    }
+  })();
+  const weekData = privateItem
+    ? curriculum.find((w) => w.week === privateItem.week)
+    : curriculum.find((w) => w.week === week);
+  const sessionData = privateItem
+    ? ({
+        session: privateItem.session ?? 0,
+        type: 'demo',
+        title: privateMeta?.title || privateItem.label,
+        hasContent: true,
+        markdownPath: `private:${privateItem.id}`,
+        description: '🔒 이 브라우저에만 저장된 개인 자료입니다.',
+      } as Session)
+    : weekData?.sessions.find((s) => s.session === session);
 
   useEffect(() => {
     const loadContent = async () => {
@@ -199,6 +230,12 @@ export const SessionGuide: React.FC = () => {
         try {
           const data = await loadMarkdownFile(sessionData.markdownPath);
           let content = data.content;
+
+          // Keep the optional Colab appendix after all lesson cards.
+          const colabMatch = content.match(/\n## 코랩에서 실행할 경우[\s\S]*?(?=\n## |\n# |$)/);
+          const colabSection = colabMatch?.[0].trim() || '';
+          if (colabMatch) content = content.replace(colabMatch[0], '');
+          setColabContent(colabSection);
 
           // 역순으로 분리: 참고 → 추가 학습 리소스 → 리소스 정리
 
@@ -263,7 +300,7 @@ export const SessionGuide: React.FC = () => {
     };
 
     loadContent();
-  }, [week, session, sessionData]);
+  }, [week, session, sessionData?.markdownPath]);
 
   if (!weekData || !sessionData) {
     return (
@@ -492,7 +529,7 @@ export const SessionGuide: React.FC = () => {
                           </SpaceBetween>
                         </Box>
                       ),
-                    ].filter(Boolean)}
+                      ].filter(Boolean)}
                   </ColumnLayout>
                 </Box>
               )}
@@ -768,7 +805,12 @@ export const SessionGuide: React.FC = () => {
             </SpaceBetween>
           </Container>
         ),
-      ].filter(Boolean)}
+              colabContent && (
+          <Container key="colab-card" id="colab">
+            <MarkdownRenderer content={colabContent} />
+          </Container>
+        ),
+].filter(Boolean)}
     </SpaceBetween>
   );
 };

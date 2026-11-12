@@ -11,6 +11,7 @@ export interface Session {
   description?: string;
   awsServices?: string[];
   learningObjectives?: string[]; // 차시별 학습 목표
+  standalonePath?: string; // 주차 메뉴 대신 별도 주소로 제공 (예: '/ICT')
 }
 
 export interface WeekCurriculum {
@@ -441,7 +442,7 @@ export const curriculum: WeekCurriculum[] = [
       {
         session: 2,
         type: 'lab',
-        title: 'AWS Lambda 함수 개발',
+        title: 'AWS Lambda 함수 개발 2(26)',
         hasContent: true,
         markdownPath: '/content/week9/9-2-lambda-function.md',
         description:
@@ -456,7 +457,7 @@ export const curriculum: WeekCurriculum[] = [
       {
         session: 3,
         type: 'lab',
-        title: 'Amazon API Gateway 서비스 구축',
+        title: 'Amazon API Gateway 서비스 구축 (26)',
         hasContent: true,
         markdownPath: '/content/week9/9-3-api-gateway.md',
         description:
@@ -482,7 +483,7 @@ export const curriculum: WeekCurriculum[] = [
       {
         session: 1,
         type: 'lab',
-        title: 'Docker 컨테이너 이미지 빌드',
+        title: 'Docker 컨테이너 이미지 빌드 (26)',
         hasContent: true,
         markdownPath: '/content/week10/10-1-docker-container.md',
         description:
@@ -497,7 +498,7 @@ export const curriculum: WeekCurriculum[] = [
       {
         session: 2,
         type: 'lab',
-        title: 'Amazon ECS 서비스 배포',
+        title: 'Amazon ECS 서비스 배포 (26)',
         hasContent: true,
         markdownPath: '/content/week10/10-2-ecs-service-deploy.md',
         description:
@@ -764,3 +765,14 @@ export const sessionTypeConfig = {
   demo: { icon: 'video-on', label: '데모', color: 'green', emoji: '🎥' },
   none: { icon: 'edit', label: '시험', color: 'red', emoji: '📝' },
 } as const;
+
+/** 주차 메뉴와 분리해 별도 주소로 제공하는 차시 (standalonePath 지정 시) */
+export const standaloneSessions = curriculum.flatMap((w) =>
+  w.sessions
+    .filter((s) => s.standalonePath)
+    .map((s) => ({ week: w.week, session: s, path: s.standalonePath as string })),
+);
+
+/** 주차 목록에 표시할 차시 (별도 주소 차시 제외) */
+export const weekSessions = (w: WeekCurriculum): Session[] =>
+  w.sessions.filter((s) => !s.standalonePath);

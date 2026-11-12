@@ -8,8 +8,19 @@ import {
   Box,
 } from '@cloudscape-design/components';
 import { useTheme } from '@/contexts/ThemeContext';
-import { curriculum, sessionTypeConfig } from '@/data/curriculum';
+import {
+  curriculum,
+  sessionTypeConfig,
+  standaloneSessions,
+  weekSessions,
+} from '@/data/curriculum';
 import { siteTitle } from '@/data/siteConfig';
+import {
+  loadPrivateMenu,
+  PRIVATE_MENU_EVENT,
+  PrivateMenuItem,
+  privateItemPath,
+} from '@/utils/privateMenu';
 import { HelpPanelContent } from '../education';
 import '@/styles/app-layout.css';
 
@@ -30,6 +41,17 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 }) => {
   const { theme, setTheme } = useTheme();
   const [toolsOpen, setToolsOpen] = useState(false);
+  // 이 브라우저에만 저장된 개인 메뉴 (저장소·배포 파일에는 없음)
+  const [privateMenu, setPrivateMenu] = useState<PrivateMenuItem[]>(() => loadPrivateMenu());
+  useEffect(() => {
+    const refresh = () => setPrivateMenu(loadPrivateMenu());
+    window.addEventListener(PRIVATE_MENU_EVENT, refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener(PRIVATE_MENU_EVENT, refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, []);
   const [isMobile, setIsMobile] = useState(
     window.innerWidth < MOBILE_BREAKPOINT,
   );
@@ -99,6 +121,11 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       items: [
         { type: 'link' as const, text: '📚 커리큘럼', href: '/dashboard' },
         { type: 'link' as const, text: '⚙️ 환경 설정', href: '/setup' },
+        ...standaloneSessions.map(({ session, path }) => ({
+          type: 'link' as const,
+          text: `${sessionTypeConfig[session.type].emoji} ${session.title}`,
+          href: path,
+        })),
       ],
     },
     { type: 'divider' as const },
@@ -106,12 +133,21 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     ...curriculum
       .map((week) => {
         // 실습/데모/시험 차시만 필터링 (theory 제외)
-        const visibleSessions = week.sessions.filter(
+        const visibleSessions = weekSessions(week).filter(
           (session) => session.type !== 'theory',
         );
 
+        const privateLinks = privateMenu
+          .filter((p) => p.week === week.week)
+          .map((p) => ({
+            type: 'link' as const,
+            text: p.label,
+            href: privateItemPath(p),
+            external: !(p.markdown && p.id),
+          }));
+
         // 표시할 차시가 없으면 이 주차는 메뉴에서 제외
-        if (visibleSessions.length === 0) {
+        if (visibleSessions.length === 0 && privateLinks.length === 0) {
           return null;
         }
 
@@ -128,7 +164,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               text: `${icon} ${week.week}-${session.session}. ${session.title}`,
               href: `/week/${week.week}/session/${session.session}`,
             };
-          }),
+          }).concat(privateLinks as any),
         };
       })
       .filter((item) => item !== null), // null 항목 제거
@@ -144,6 +180,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     } else if (currentPath === '/setup') {
       breadcrumbs.push({ text: '시작하기', href: '#' });
       breadcrumbs.push({ text: '⚙️ 환경 설정', href: '/setup' });
+    } else if (standaloneSessions.some((s) => s.path === currentPath)) {
+      const s = standaloneSessions.find((x) => x.path === currentPath)!;
+      breadcrumbs.push({ text: '시작하기', href: '#' });
+      breadcrumbs.push({
+        text: `${sessionTypeConfig[s.session.type].emoji} ${s.session.title}`,
+        href: currentPath,
+      });
     } else if (currentPath.startsWith('/week/')) {
       const pathParts = currentPath.split('/');
       const weekNumber = parseInt(pathParts[2]);
